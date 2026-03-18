@@ -247,4 +247,25 @@
 
 	.gateway-text {
 		font-size: 22rpx;
-		col
+		color: #666;
+	}
+
+	.wifi-icon {
+		width: 60rpx; /* 控制WiFi图标大小 */
+		height: 60rpx;
+	}
+
+	/* 右箭头样式（可根据需求调整大小和颜色） */
+	.arrow-icon {
+		font-size: 28rpx;
+		color: #ccc;
+	}
+
+	/* 空数据提示 */
+	.empty-tip {
+		text-align: center;
+		padding: 100rpx 0;
+		color: #999;
+		font-size: 28rpx;
+	}
+</style>
