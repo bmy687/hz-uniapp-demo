@@ -1,0 +1,31 @@
+{
+  "name": "hezhidemo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "dev:h5": "uni",
+    "build:h5": "uni build",
+    "dev:mp-weixin": "uni --platform mp-weixin",
+    "build:mp-weixin": "uni build --platform mp-weixin"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@dcloudio/uni-cli-shared": "3.0.0-5000320260312001",
+    "@dcloudio/vite-plugin-uni": "3.0.0-5000320260312001",
+    "sass": "^1.98.0",
+    "vite": "5.2.8"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-5000320260312001",
+    "@dcloudio/uni-components": "3.0.0-alpha-3000020210521001",
+    "@dcloudio/uni-h5": "^3.0.0-5000320260312001",
+    "@vue/reactivity": "3.4.21",
+    "@vue/runtime-core": "3.4.21",
+    "@vue/runtime-dom": "^3.4.21",
+    "@vue/shared": "3.4.21",
+    "vue": "3.4.21"
+  }
+}

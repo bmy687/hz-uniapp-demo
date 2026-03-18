@@ -1,0 +1,83 @@
+{
+	"pages": [ 
+		{
+			"path" : "pages/login/login",
+			"style" : 
+			{
+				"navigationBarTitleText" : "登录",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "笃行楼305",
+				"navigationBarBackgroundColor": "white",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path" : "pages/user/user",
+			"style" : 
+			{
+				"navigationBarTitleText" : "个人中心",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path" : "pages/shouYe/shouYe",
+			"style" : 
+			{
+				"navigationBarTitleText" : "慧电智控管理平台",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path" : "pages/caoZuo/caoZuo",
+			"style" : 
+			{
+				"navigationBarTitleText" : "慧电智控管理平台",
+				"navigationBarBackgroundColor": "#CCCCCC"
+			}
+		},
+		{
+			"path" : "pages/sheZhi/sheZhi",
+			"style" : 
+			{
+				"navigationBarTitleText" : "慧电智控管理平台",
+				"navigationBarBackgroundColor": "#CCCCCC"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "电籍管理",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8"
+	},
+	"tabBar": {
+		"color": "#999",
+		"selectedColor": "#09C6D0",
+		"list": [
+			{
+				"pagePath": "pages/shouYe/shouYe",
+				"text": "首页",
+				"iconPath": "/static/tabbar/home1.png",
+				"selectedIconPath": "/static/tabbar/home-two.png"
+			},
+			{
+				"pagePath": "pages/caoZuo/caoZuo",
+				"text": "操作",
+				"iconPath": "/static/tabbar/caoZuo.png",
+				"selectedIconPath": "/static/tabbar/caoZuo-two.png"
+			},
+			{
+				"pagePath": "pages/sheZhi/sheZhi",
+				"text": "设置",
+				"iconPath": "/static/tabbar/sheZhi.png",
+				"selectedIconPath": "/static/tabbar/sheZhi-two.png"
+			}
+		]
+	},
+	"uniIdRouter": {}
+}
