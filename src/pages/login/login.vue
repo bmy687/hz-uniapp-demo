@@ -57,7 +57,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUpdated } from 'vue'
+import { ref, onMounted } from 'vue'
 
 // 表单数据
 const username = ref('')

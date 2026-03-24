@@ -67,8 +67,8 @@
 
 <script setup>
 	import { ref, onMounted } from 'vue';
+	import { getDeviceList } from '../../api/device.js';
 
-	const BASE_URL = '/api'
 	const statusBarHeight = ref(20);
 	const deviceList = ref([]);
 	const loading = ref(false);
@@ -94,24 +94,19 @@
 	}
 
 	// 获取所有设备列表
-	const fetchDevices = () => {
+	const fetchDevices = async () => {
 		loading.value = true
-		uni.request({
-			url: `${BASE_URL}/devices`,
-			method: 'GET',
-			success: (res) => {
-				if (res.statusCode === 200 && Array.isArray(res.data)) {
-					deviceList.value = res.data
-				}
-			},
-			fail: (err) => {
-				console.error('获取设备列表失败', err)
-				uni.showToast({ title: '获取设备列表失败', icon: 'none' })
-			},
-			complete: () => {
-				loading.value = false
+		try {
+			const data = await getDeviceList()
+			if (Array.isArray(data)) {
+				deviceList.value = data
 			}
-		})
+		} catch (err) {
+			console.error('获取设备列表失败', err)
+			uni.showToast({ title: '获取设备列表失败', icon: 'none' })
+		} finally {
+			loading.value = false
+		}
 	}
 
 	// 点击卡片跳转详情

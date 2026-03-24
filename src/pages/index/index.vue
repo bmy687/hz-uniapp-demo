@@ -147,8 +147,11 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-
-const BASE_URL = '/api'
+import { onShow } from '@dcloudio/uni-app'
+import { getBreakerState, getBreakerStateText, getBreakerStateColor, breakerStatusMap } from '../../utils/breakerCodes.js'
+import { createWsManager } from '../../utils/ws.js'
+import { getDeviceInfo, getDeviceData, sendDeviceControl } from '../../api/device.js'
+const POLL_INTERVAL = 5000
 
 // 从页面参数获取设备信息，提供默认值
 const building = ref('')
@@ -161,6 +164,10 @@ const temperature = ref(24)
 const loading = ref(false)
 const deviceInfo = ref({})
 const deviceData = ref({})
+const envAlertAcknowledged = ref(false)
+const envAlertVisible = ref(false)
+const ENV_TEMPERATURE_ALERT_THRESHOLD = 58
+const ENV_HUMIDITY_ALERT_THRESHOLD = 50
 
 // action 映射：按钮文字 → 后端 action 值
 const actionMap = {
@@ -169,62 +176,68 @@ const actionMap = {
 	'复位': 'unlock'
 }
 
-// breaker_work 状态码对照
-const breakerStatusMap = {
-	0: '手动合闸', 1: '命令合闸', 2: '漏电合闸', 3: '保留',
-	4: '手动分闸', 5: '命令分闸', 6: '自动分闸', 7: '命令锁死(需解锁)',
-	8: '漏电锁死(需解锁)', 9: '机械故障', 10: '定时合闸', 11: '定时分闸',
-	12: '保留', 13: '干接点合闸', 14: '干接点分闸', 15: '手动模式合闸', 16: '手动模式分闸'
+// 根据当前设备数据返回状态分类
+const breakerState = () => getBreakerState(deviceData.value.breaker_work)
+const breakerStateColor = () => getBreakerStateColor(breakerState())
+const breakerStateText = () => getBreakerStateText(breakerState())
+
+let pollTimer = null
+
+const toAlertNumber = (value) => {
+	if (value === undefined || value === null || value === '') return Number.NaN
+	return Number(value)
 }
 
-// 合闸状态码集合（文档标注为"分闸"，实际硬件为合闸）
-const closedCodes = new Set([4, 5, 6, 11, 14, 16])
-// 分闸状态码集合（文档标注为"合闸"，实际硬件为分闸）
-const openedCodes = new Set([0, 1, 2, 10, 13, 15])
-// 异常状态码集合（锁死 + 故障）
-const abnormalCodes = new Set([7, 8, 9])
+const getEnvAlertOptions = () => {
+	const currentTemperature = toAlertNumber(temperature.value)
+	if (!Number.isNaN(currentTemperature) && currentTemperature >= ENV_TEMPERATURE_ALERT_THRESHOLD) {
+		return {
+			title: '温度告警',
+			content: '当前温度≥58°C，请注意降温处理！'
+		}
+	}
 
-// 根据状态码返回状态分类
-const breakerState = () => {
-	const code = deviceData.value.breaker_work
-	if (code === undefined || code === null) return 'unknown'
-	if (closedCodes.has(code)) return 'closed'
-	if (openedCodes.has(code)) return 'opened'
-	if (abnormalCodes.has(code)) return 'abnormal'
-	return 'unknown'
+	const currentHumidity = toAlertNumber(deviceData.value.humidity)
+	if (!Number.isNaN(currentHumidity) && currentHumidity >= ENV_HUMIDITY_ALERT_THRESHOLD) {
+		return {
+			title: '湿度告警',
+			content: '当前湿度≥60%RH，请注意防潮处理！'
+		}
+	}
+
+	return null
 }
 
-// 状态颜色
-const breakerStateColor = () => {
-	const state = breakerState()
-	if (state === 'closed') return '#2B9939'   // 绿色-合闸
-	if (state === 'opened') return '#FF9800'   // 橙色-分闸
-	if (state === 'abnormal') return '#F44336' // 红色-异常
-	return '#999'
+const resetEnvAlertState = () => {
+	envAlertAcknowledged.value = false
+	envAlertVisible.value = false
 }
 
-// 状态简述
-const breakerStateText = () => {
-	const state = breakerState()
-	if (state === 'closed') return '合闸'
-	if (state === 'opened') return '分闸'
-	if (state === 'abnormal') return '异常'
-	return '未知'
-}
-
-let wsTask = null
-
-// 获取设备静态信息
-const fetchInfo = () => {
-	uni.request({
-		url: `${BASE_URL}/${building.value}/${room.value}/${gateway.value}/info`,
+const showEnvAlert = (title, content) => {
+	envAlertVisible.value = true
+	uni.showModal({
+		title,
+		content,
+		confirmText: '我已知晓',
+		showCancel: false,
 		success: (res) => {
-			if (res.statusCode === 200) {
-				deviceInfo.value = res.data
-				deviceType.value = res.data.device_type || 'breaker'
+			if (res.confirm) {
+				envAlertAcknowledged.value = true
 			}
+		},
+		complete: () => {
+			envAlertVisible.value = false
 		}
 	})
+}
+
+// 获取设备静态信息
+const fetchInfo = async () => {
+	try {
+		const data = await getDeviceInfo(building.value, room.value, gateway.value)
+		deviceInfo.value = data
+		deviceType.value = data.device_type || 'breaker'
+	} catch (e) {}
 }
 
 // 检查告警
@@ -243,52 +256,52 @@ const checkAlerts = () => {
 	}
 	// 温湿度传感器告警
 	if (deviceType.value === 'env_sensor') {
-		if (temperature.value >= 58) {
-			uni.showModal({
-				title: '温度告警',
-				content: '当前温度≥58°C，请注意降温处理！',
-				confirmText: '我已知晓',
-				showCancel: false
-			})
-		} else if (deviceData.value.humidity >= 50) {
-			uni.showModal({
-				title: '湿度告警',
-				content: '当前湿度≥60%RH，请注意防潮处理！',
-				confirmText: '我已知晓',
-				showCancel: false
-			})
+		const alertOptions = getEnvAlertOptions()
+		if (!alertOptions) {
+			resetEnvAlertState()
+			return
 		}
+
+		if (envAlertAcknowledged.value || envAlertVisible.value) {
+			return
+		}
+
+		showEnvAlert(alertOptions.title, alertOptions.content)
 	}
 }
 
 // 获取设备实时数据
-const fetchData = () => {
-	uni.request({
-		url: `${BASE_URL}/${building.value}/${room.value}/${gateway.value}/data`,
-		success: (res) => {
-			if (res.statusCode === 200) {
-				deviceData.value = res.data
-				if (res.data.temperature !== undefined) {
-					temperature.value = res.data.temperature
-				}
-				// console.log('fetchData 返回:', JSON.stringify(res.data), '湿度:', res.data.humidity)
-				checkAlerts()
-			}
-		}
-	})
+const startPolling = () => {
+	if (pollTimer) return
+	pollTimer = setInterval(() => {
+		fetchData()
+	}, POLL_INTERVAL)
 }
 
-// WebSocket 实时更新
-const connectWS = () => {
-	const host = '192.168.192.104:8080'
-	wsTask = uni.connectSocket({
-		url: `ws://${host}/ws`,
-		success: () => {}
-	})
-	uni.onSocketOpen(() => {
+const stopPolling = () => {
+	if (!pollTimer) return
+	clearInterval(pollTimer)
+	pollTimer = null
+}
+
+const fetchData = async () => {
+	try {
+		const data = await getDeviceData(building.value, room.value, gateway.value)
+		deviceData.value = data
+		if (data.temperature !== undefined) {
+			temperature.value = data.temperature
+		}
+		checkAlerts()
+	} catch (e) {}
+}
+
+const wsManager = createWsManager({
+	onOpen: () => {
 		zt.value = '在线'
-	})
-	uni.onSocketMessage((res) => {
+		stopPolling()
+		fetchData()
+	},
+	onMessage: (res) => {
 		try {
 			const msg = JSON.parse(res.data)
 			if (msg.gateway !== gateway.value) return
@@ -307,14 +320,18 @@ const connectWS = () => {
 				}
 			}
 		} catch (e) {}
-	})
-	uni.onSocketClose(() => {
+	},
+	onClose: () => {
 		zt.value = '离线'
-	})
-	uni.onSocketError(() => {
+		startPolling()
+	},
+	onError: () => {
 		zt.value = '离线'
-	})
-}
+		startPolling()
+	}
+})
+const connectWS = () => wsManager.connect()
+const closeWS = () => wsManager.close()
 
 onMounted(() => {
 	// 从页面参数获取设备标识
@@ -328,21 +345,20 @@ onMounted(() => {
 	fetchInfo()
 	fetchData()
 	connectWS()
-
-	// 每5秒轮询一次数据，兜底WebSocket延迟或断连
-	pollTimer = setInterval(() => {
-		fetchData()
-	}, 5000)
 })
 
-let pollTimer = null
+onShow(() => {
+	wsManager.setAllowReconnect(true)
+	// onShow 在首次进入时可能先于 onMounted 触发，此时参数尚未解析，跳过。
+	if (!gateway.value) return
+	fetchData()
+	connectWS()
+})
 
 onUnmounted(() => {
-	uni.closeSocket()
-	if (pollTimer) {
-		clearInterval(pollTimer)
-		pollTimer = null
-	}
+	wsManager.setAllowReconnect(false)
+	stopPolling()
+	closeWS()
 })
 
 // 拨打电话功能
@@ -354,29 +370,13 @@ const callPhone = (phone) => {
 }
 
 // 发送控制指令到后端
-const sendControl = (action) => {
-	return new Promise((resolve, reject) => {
-		loading.value = true
-		uni.request({
-			url: `${BASE_URL}/${building.value}/${room.value}/${gateway.value}/control`,
-			method: 'POST',
-			header: { 'Content-Type': 'application/json' },
-			data: { action },
-			success: (res) => {
-				if (res.statusCode === 200) {
-					resolve(res.data)
-				} else {
-					reject(res.data)
-				}
-			},
-			fail: (err) => {
-				reject(err)
-			},
-			complete: () => {
-				loading.value = false
-			}
-		})
-	})
+const sendControl = async (action) => {
+	loading.value = true
+	try {
+		return await sendDeviceControl(building.value, room.value, gateway.value, action)
+	} finally {
+		loading.value = false
+	}
 }
 
 // 操作按钮逻辑
@@ -506,11 +506,6 @@ const handleOperate = (type) => {
   margin-bottom: 10rpx;
   display: block;
 }
-.param-values {
-  display: flex;
-  flex-direction: column;
-  gap: 5rpx;
-}
 .param-value {
   font-size: 22rpx;
   color: #333;
@@ -519,47 +514,6 @@ const handleOperate = (type) => {
   font-size: 28rpx;
   font-weight: 600;
   color: #2B9939;
-}
-
-/* 环境与线温 */
-.temp-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 15rpx;
-}
-.env-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10rpx 0;
-}
-.env-label {
-  font-size: 22rpx;
-  color: #666;
-}
-.env-value {
-  font-size: 24rpx;
-  color: #333;
-  font-weight: 500;
-}
-.line-temp {
-  background: #f9f9f9;
-  border-radius: 10rpx;
-  padding: 15rpx;
-}
-.temp-label {
-  font-size: 22rpx;
-  color: #666;
-  margin-bottom: 10rpx;
-  display: block;
-}
-.temp-values {
-  display: flex;
-  justify-content: space-around;
-}
-.temp-value {
-  font-size: 22rpx;
-  color: #333;
 }
 
 /* 联系人 */
@@ -609,10 +563,6 @@ const handleOperate = (type) => {
   color: #fff;
   border-radius: 10rpx;
 }
-.operate-btn.reset {
-  background: #FF5722;
-}
-
 /* 非断路器提示 */
 .no-control-tip {
   text-align: center;

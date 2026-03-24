@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --experimental-vm-modules src/pages/index/index.test.mjs)",
+      "Bash(node src/pages/index/index.test.mjs)",
+      "Bash(node src/pages/caoZuo/caoZuo.test.mjs)"
+    ]
+  }
+}

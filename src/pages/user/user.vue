@@ -61,7 +61,7 @@ const username = ref('')
 // 页面加载时获取用户信息
 onMounted(() => {
   // 从存储中读取登录时保存的用户名
-  const savedUser = uni.getStorageSync('savedUser')
+  const savedUser = uni.getStorageSync('savedUsername')
   if (savedUser) {
     username.value = savedUser
   }
@@ -100,8 +100,8 @@ const handleLogout = () => {
     success:res => {
       if (res.confirm) {
         // 1. 清除存储的用户信息
-        uni.removeStorageSync('savedUser')
-        uni.removeStorageSync('savedPwd')
+        uni.removeStorageSync('savedUsername')
+        uni.removeStorageSync('savedPassword')
         
         // 2. 显示退出提示
         uni.showToast({
