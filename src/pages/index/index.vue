@@ -5,12 +5,12 @@
       <view class="title">{{ deviceInfo.name || '设备详情' }}</view>
       <view class="base-info">
         <view class="info-item">
-          <text class="label">位置：</text>
-          <text class="value">{{ deviceInfo.location || '-' }}</text>
+          <text class="label">区域：</text>
+          <text class="value">{{ deviceInfo.building || '-' }}</text>
         </view>
         <view class="info-item">
-          <text class="label">房间：</text>
-          <text class="value">{{ deviceInfo.building }} - {{ deviceInfo.room }}</text>
+          <text class="label">泵房：</text>
+          <text class="value">{{ deviceInfo.room }}</text>
         </view>
         <view class="info-item">
           <text class="label">网关：</text>
@@ -147,7 +147,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onShow, onHide } from '@dcloudio/uni-app'
 import { getBreakerState, getBreakerStateText, getBreakerStateColor, breakerStatusMap } from '../../utils/breakerCodes.js'
 import { createWsManager } from '../../utils/ws.js'
 import { getDeviceInfo, getDeviceData, sendDeviceControl } from '../../api/device.js'
@@ -161,7 +161,6 @@ const deviceType = ref('breaker')
 
 const zt = ref("离线")
 const temperature = ref(24)
-const loading = ref(false)
 const deviceInfo = ref({})
 const deviceData = ref({})
 const envAlertAcknowledged = ref(false)
@@ -182,6 +181,7 @@ const breakerStateColor = () => getBreakerStateColor(breakerState())
 const breakerStateText = () => getBreakerStateText(breakerState())
 
 let pollTimer = null
+let skipNextOnShowRefresh = true
 
 const toAlertNumber = (value) => {
 	if (value === undefined || value === null || value === '') return Number.NaN
@@ -286,7 +286,7 @@ const stopPolling = () => {
 
 const fetchData = async () => {
 	try {
-		const data = await getDeviceData(building.value, room.value, gateway.value)
+		const data = await getDeviceData(building.value, room.value, gateway.value, { noCache: true })
 		deviceData.value = data
 		if (data.temperature !== undefined) {
 			temperature.value = data.temperature
@@ -299,7 +299,6 @@ const wsManager = createWsManager({
 	onOpen: () => {
 		zt.value = '在线'
 		stopPolling()
-		fetchData()
 	},
 	onMessage: (res) => {
 		try {
@@ -351,8 +350,19 @@ onShow(() => {
 	wsManager.setAllowReconnect(true)
 	// onShow 在首次进入时可能先于 onMounted 触发，此时参数尚未解析，跳过。
 	if (!gateway.value) return
+	if (skipNextOnShowRefresh) {
+		skipNextOnShowRefresh = false
+		connectWS()
+		return
+	}
 	fetchData()
 	connectWS()
+})
+
+onHide(() => {
+	wsManager.setAllowReconnect(false)
+	stopPolling()
+	closeWS()
 })
 
 onUnmounted(() => {
@@ -371,12 +381,7 @@ const callPhone = (phone) => {
 
 // 发送控制指令到后端
 const sendControl = async (action) => {
-	loading.value = true
-	try {
-		return await sendDeviceControl(building.value, room.value, gateway.value, action)
-	} finally {
-		loading.value = false
-	}
+	return sendDeviceControl(building.value, room.value, gateway.value, action)
 }
 
 // 操作按钮逻辑
@@ -426,22 +431,26 @@ const handleOperate = (type) => {
   text-align: center;
 }
 .info-card .base-info {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 15rpx 30rpx;
 }
 .info-card .info-item {
   display: flex;
-  align-items: center;
+  align-items: baseline;
+  min-width: 0;
   font-size: 24rpx;
 }
 .info-card .label {
+  flex-shrink: 0;
   color: #666;
   margin-right: 8rpx;
 }
 .info-card .value {
+  min-width: 0;
   color: #333;
   font-weight: 500;
+  word-break: break-all;
 }
 .info-card .online {
   color: #2B9939;

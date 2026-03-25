@@ -25,7 +25,7 @@ const createComputed = (getter) => ({
 	}
 })
 
-const createRequestMock = (handlers, requestLog) => {
+	const createRequestMock = (handlers, requestLog) => {
 	return (options) => {
 		const method = options.method || 'GET'
 		requestLog.push({
@@ -42,6 +42,24 @@ const createRequestMock = (handlers, requestLog) => {
 		}
 
 		const result = typeof handler === 'function' ? handler(options) : handler
+		if (result?.then) {
+			result
+				.then((resolvedResult) => {
+					if (resolvedResult && resolvedResult.fail) {
+						options.fail?.(resolvedResult.fail)
+						return
+					}
+
+					options.success?.({
+						statusCode: resolvedResult?.statusCode ?? 200,
+						data: resolvedResult?.data ?? resolvedResult
+					})
+				})
+				.catch((error) => {
+					options.fail?.(error)
+				})
+			return
+		}
 		if (result && result.fail) {
 			options.fail?.(result.fail)
 			return
@@ -198,7 +216,10 @@ const loadPage = (handlers = {}) => {
 			timeoutCalls.push(timer)
 			return timer
 		},
-		clearTimeout: () => {},
+		clearTimeout: (timer) => {
+			if (!timer) return
+			timer.cleared = true
+		},
 		uni: uniMock,
 		console,
 		Promise
@@ -265,6 +286,39 @@ await run('loadBreakerDevices only keeps breaker devices and filters closed stat
 
 	assert.equal(bindings.tableData.value.length, 1)
 	assert.equal(bindings.tableData.value[0].gateway, 'G1')
+})
+
+await run('loadBreakerDevices limits concurrent runtime requests', async () => {
+	let inFlight = 0
+	let maxInFlight = 0
+	const devices = Array.from({ length: 6 }, (_, index) => ({
+		gateway: `G${index + 1}`,
+		building: 'B',
+		room: `${100 + index}`,
+		device_type: 'breaker',
+		location: `floor-${index + 1}`
+	}))
+	const handlers = {
+		'GET /api/devices': { data: devices }
+	}
+
+	devices.forEach((device) => {
+		handlers[`GET /api/${device.building}/${device.room}/${device.gateway}/data?_t=0`] = () => new Promise((resolve) => {
+			inFlight += 1
+			maxInFlight = Math.max(maxInFlight, inFlight)
+			setTimeout(() => {
+				inFlight -= 1
+				resolve({ data: { breaker_work: 4 } })
+			}, 10)
+		})
+	})
+
+	const { bindings } = loadPage(handlers)
+
+	await bindings.loadBreakerDevices()
+
+	assert.equal(bindings.tableData.value.length, 6)
+	assert.equal(maxInFlight <= 4, true)
 })
 
 await run('operation page connects websocket on show using the current host', async () => {
@@ -531,4 +585,28 @@ await run('silent refresh keeps list visible instead of switching back to initia
 
 	await pendingLoad
 	assert.equal(bindings.refreshing.value, false)
+})
+
+await run('onHide clears the pending delayed status refresh timer', async () => {
+	const { bindings, modalCalls, timeoutCalls, runHide } = loadPage({
+		'GET /api/devices': {
+			data: [
+				{ gateway: 'G1', building: 'B', room: '101', device_type: 'breaker', location: 'floor-1' }
+			]
+		},
+		'GET /api/B/101/G1/data?_t=0': { data: { breaker_work: 4 } },
+		'POST /api/B/101/G1/control': { data: { ok: true } }
+	})
+
+	await bindings.loadBreakerDevices()
+	bindings.handleCheckSingle(0)
+	bindings.handleGlobalAction('open')
+	await modalCalls[0].success({ confirm: true })
+
+	const refreshTimer = timeoutCalls.find(item => item.delay === 1000)
+	assert.equal(Boolean(refreshTimer), true)
+
+	runHide()
+
+	assert.equal(refreshTimer.cleared, true)
 })

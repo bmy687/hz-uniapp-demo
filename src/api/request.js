@@ -1,20 +1,51 @@
-const BASE_URL = '/api'
+import { buildRequestUrl } from '../config/network.js'
 
-export const request = ({ url, method = 'GET', data, header }) => {
-	return new Promise((resolve, reject) => {
-		uni.request({
-			url: `${BASE_URL}${url}`,
+const DEFAULT_TIMEOUT = 10000
+
+export const isSuccessStatus = (statusCode) => {
+	return statusCode >= 200 && statusCode < 300
+}
+
+const normalizeRequestError = (payload, fallbackError) => {
+	if (payload && typeof payload === 'object') {
+		return {
+			...payload,
+			error: payload.error || payload.message || payload.errMsg || fallbackError
+		}
+	}
+
+	return {
+		error: fallbackError,
+		detail: payload
+	}
+}
+
+export const request = ({ url, method = 'GET', data, header, timeout = DEFAULT_TIMEOUT }) => {
+	let requestTask = null
+
+	const promise = new Promise((resolve, reject) => {
+		requestTask = uni.request({
+			url: buildRequestUrl(url),
 			method,
 			data,
 			header,
+			timeout,
 			success: (res) => {
-				if (res.statusCode === 200) {
+				if (isSuccessStatus(res.statusCode)) {
 					resolve(res.data)
 				} else {
-					reject(res.data || res)
+					reject(normalizeRequestError(res.data || res, `请求失败(${res.statusCode})`))
 				}
 			},
-			fail: (err) => reject(err)
+			fail: (err) => reject(normalizeRequestError(err, err?.errMsg || '网络请求失败'))
 		})
 	})
+
+	promise.abort = () => {
+		try {
+			requestTask?.abort?.()
+		} catch (e) {}
+	}
+
+	return promise
 }

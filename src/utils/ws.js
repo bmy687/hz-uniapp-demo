@@ -1,12 +1,9 @@
+import { getWsUrl } from '../config/network.js'
+
 const DEFAULT_RECONNECT_DELAY = 3000
-const FALLBACK_WS_URL = 'ws://192.168.192.10:8080/ws'
 
 export const buildWsUrl = () => {
-	if (typeof window !== 'undefined' && window.location?.host) {
-		const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-		return `${protocol}://${window.location.host}/ws`
-	}
-	return FALLBACK_WS_URL
+	return getWsUrl()
 }
 
 /**

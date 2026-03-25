@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import vm from 'node:vm'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { getBreakerState, getBreakerStateText, getBreakerStateColor, breakerStatusMap } from '../../utils/breakerCodes.js'
 
 const run = async (name, fn) => {
@@ -18,6 +18,11 @@ const scriptMatch = componentSource.match(/<script setup>([\s\S]*?)<\/script>/)
 assert.ok(scriptMatch, 'index.vue should contain a <script setup> block')
 
 const scriptContent = scriptMatch[1].replace(/^\s*import\s.+$/gm, '').trim()
+
+const importModule = async (relativePath) => {
+	const modulePath = path.resolve(currentDir, relativePath)
+	return import(`${pathToFileURL(modulePath).href}?t=${Date.now()}-${Math.random()}`)
+}
 
 const createRequestMock = (handlers, requestLog) => {
 	return (options) => {
@@ -56,6 +61,7 @@ const loadPage = ({
 	let mountedHook = () => {}
 	let unmountedHook = () => {}
 	let showHook = () => {}
+	let hideHook = () => {}
 	let now = 1000
 
 	const socketHandlers = {
@@ -170,6 +176,9 @@ const loadPage = ({
 		onShow: (fn) => {
 			showHook = fn
 		},
+		onHide: (fn) => {
+			hideHook = fn
+		},
 		getBreakerState,
 		getBreakerStateText,
 		getBreakerStateColor,
@@ -228,6 +237,7 @@ const loadPage = ({
 		intervalCalls,
 		runMounted: () => mountedHook(),
 		runShow: () => showHook(),
+		runHide: () => hideHook(),
 		runUnmounted: () => unmountedHook(),
 		advanceTime: (value) => {
 			now += value
@@ -246,6 +256,127 @@ await run('mounted fetchData uses a cache-busting data URL', async () => {
 	runMounted()
 
 	assert.equal(requestLog.some(item => item.url === '/api/B/101/G1/data?_t=1000'), true)
+})
+
+await run('request accepts 201 responses and uses the H5 dev proxy url', async () => {
+	let requestOptions = null
+	globalThis.window = {
+		location: {
+			port: '5174',
+			host: '127.0.0.1:5174',
+			protocol: 'http:'
+		}
+	}
+	globalThis.uni = {
+		request: (options) => {
+			requestOptions = options
+			options.success?.({
+				statusCode: 201,
+				data: { id: '10101' }
+			})
+			return {
+				abort: () => {
+					requestOptions.aborted = true
+				}
+			}
+		}
+	}
+
+	const { request } = await importModule('../../api/request.js')
+	const promise = request({
+		url: '/devices',
+		method: 'POST',
+		timeout: 4321
+	})
+
+	assert.deepEqual(await promise, { id: '10101' })
+	assert.equal(requestOptions.url, '/api/devices')
+	assert.equal(requestOptions.timeout, 4321)
+	promise.abort()
+	assert.equal(requestOptions.aborted, true)
+
+	delete globalThis.window
+	delete globalThis.uni
+})
+
+await run('network config derives websocket and request urls from the shared runtime config', async () => {
+	globalThis.window = {
+		location: {
+			port: '5174',
+			host: '127.0.0.1:5174',
+			protocol: 'https:'
+		}
+	}
+
+	const { buildRequestUrl, getWsUrl } = await importModule('../../config/network.js')
+
+	assert.equal(buildRequestUrl('/devices'), '/api/devices')
+	assert.equal(getWsUrl(), 'wss://127.0.0.1:5174/ws')
+
+	delete globalThis.window
+})
+
+await run('device api caches the device list and only cache-busts runtime data when requested', async () => {
+	const requestUrls = []
+	let deviceListRequestCount = 0
+
+	globalThis.window = {
+		location: {
+			port: '5174',
+			host: '127.0.0.1:5174',
+			protocol: 'http:'
+		}
+	}
+	globalThis.uni = {
+		request: (options) => {
+			requestUrls.push(options.url)
+			if (options.url === '/api/devices') {
+				deviceListRequestCount += 1
+				options.success?.({
+					statusCode: 200,
+					data: [{ gateway: `G${deviceListRequestCount}` }]
+				})
+				return { abort: () => {} }
+			}
+
+			if (options.url === '/api/B/101/G1/data') {
+				options.success?.({
+					statusCode: 200,
+					data: { breaker_work: 4 }
+				})
+				return { abort: () => {} }
+			}
+
+			if (options.url.startsWith('/api/B/101/G1/data?_t=')) {
+				options.success?.({
+					statusCode: 200,
+					data: { breaker_work: 5 }
+				})
+				return { abort: () => {} }
+			}
+
+			options.fail?.({ error: `unexpected url: ${options.url}` })
+			return { abort: () => {} }
+		}
+	}
+
+	const { getDeviceList, getDeviceData, clearDeviceListCache } = await importModule('../../api/device.js')
+
+	clearDeviceListCache()
+	const firstList = await getDeviceList()
+	const secondList = await getDeviceList()
+	await getDeviceData('B', '101', 'G1')
+	await getDeviceData('B', '101', 'G1', { noCache: true })
+
+	assert.equal(deviceListRequestCount, 1)
+	assert.deepEqual(firstList, secondList)
+	assert.notEqual(firstList, secondList)
+	assert.equal(requestUrls.includes('/api/B/101/G1/data'), true)
+	assert.equal(requestUrls.some(url => url.startsWith('/api/B/101/G1/data?_t=')), true)
+
+	clearDeviceListCache()
+	delete globalThis.window
+	delete globalThis.uni
 })
 
 await run('websocket connects using the current page protocol and host', async () => {
@@ -282,20 +413,24 @@ await run('socket close schedules a reconnect on the current host', async () => 
 	assert.equal(connectSocketCalls[1].url, 'wss://mobile.example.com/ws')
 })
 
-await run('onShow triggers an immediate fresh data fetch', async () => {
+await run('subsequent onShow triggers an immediate fresh data fetch', async () => {
 	const { requestLog, runMounted, runShow, advanceTime } = loadPage({
 		handlers: {
 			'GET /api/B/101/G1/info': { data: { device_type: 'breaker' } },
 			'GET /api/B/101/G1/data?_t=1000': { data: { breaker_work: 4 } },
-			'GET /api/B/101/G1/data?_t=1500': { data: { breaker_work: 0 } }
+			'GET /api/B/101/G1/data?_t=1500': { data: { breaker_work: 0 } },
+			'GET /api/B/101/G1/data?_t=2000': { data: { breaker_work: 5 } }
 		}
 	})
 
 	runMounted()
+	runShow()
+	advanceTime(500)
+	runShow()
 	advanceTime(500)
 	runShow()
 
-	assert.equal(requestLog.some(item => item.url === '/api/B/101/G1/data?_t=1500'), true)
+	assert.equal(requestLog.some(item => item.url === '/api/B/101/G1/data?_t=2000'), true)
 })
 
 await run('ws open stops polling, ws close starts polling as fallback', async () => {
@@ -318,4 +453,22 @@ await run('ws open stops polling, ws close starts polling as fallback', async ()
 	socketHandlers.close()
 	assert.equal(intervalCalls.length, 1)
 	assert.equal(intervalCalls[0].delay, 5000)
+})
+
+await run('ws open no longer triggers an extra fetch after the mounted request', async () => {
+	const { requestLog, socketHandlers, runMounted } = loadPage({
+		handlers: {
+			'GET /api/B/101/G1/info': { data: { device_type: 'breaker' } },
+			'GET /api/B/101/G1/data?_t=1000': { data: { breaker_work: 4 } }
+		}
+	})
+
+	runMounted()
+	const fetchCountBeforeOpen = requestLog.filter(item => item.url === '/api/B/101/G1/data?_t=1000').length
+
+	socketHandlers.open()
+
+	const fetchCountAfterOpen = requestLog.filter(item => item.url === '/api/B/101/G1/data?_t=1000').length
+	assert.equal(fetchCountBeforeOpen, 1)
+	assert.equal(fetchCountAfterOpen, 1)
 })

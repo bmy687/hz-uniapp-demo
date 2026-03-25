@@ -59,7 +59,7 @@
 								<checkbox :checked="remember" color="#1aa094" style="transform:scale(0.8)" />
 							</checkbox-group>
 						</view>
-						<view class="table-cell">位置</view>
+						<view class="table-cell location-cell">位置</view>
 						<view class="table-cell">名称</view>
 						<view class="table-cell">状态</view>
 					</view>
@@ -72,8 +72,8 @@
 									<checkbox :checked="item.checked" color="#1aa094" style="transform:scale(0.8)" />
 								</checkbox-group>
 							</view>
-							<view class="table-cell">{{ item.location }}</view>
-							<view class="table-cell">{{ item.name }}</view>
+							<view class="table-cell location-cell">{{ item.location }}</view>
+							<view class="table-cell">{{ item.gateway }}</view>
 							<view class="table-cell" :style="{color: getStatusColor(item.status)}">
 								{{ item.status }}
 							</view>
@@ -113,6 +113,7 @@
 	const tableData = ref([]);
 	const allBreakerDevices = ref([]);
 	const statusSyncErrorCount = ref(0);
+	const BREAKER_RUNTIME_FETCH_CONCURRENCY = 4;
 
 	const actionTextMap = {
 		close: '合闸',
@@ -224,16 +225,42 @@
 	};
 
 	const fetchBreakerRuntime = async (device) => {
-		const runtimeData = await getDeviceData(device.building, device.room, device.gateway);
+		const runtimeData = await getDeviceData(device.building, device.room, device.gateway, { noCache: true });
 		const state = resolveStateWithPending(device, getBreakerState(runtimeData?.breaker_work));
 		return {
 			...device,
 			location: buildLocation(device),
-			name: device.name || device.gateway || '-',
 			state,
 			status: getBreakerStateText(state),
 			checked: false
 		};
+	};
+
+	const fetchBreakerRuntimes = async (devices) => {
+		if (!Array.isArray(devices) || devices.length === 0) return [];
+		const results = new Array(devices.length);
+		let nextIndex = 0;
+
+		const runWorker = async () => {
+			while (nextIndex < devices.length) {
+				const currentIndex = nextIndex++;
+				try {
+					results[currentIndex] = {
+						status: 'fulfilled',
+						value: await fetchBreakerRuntime(devices[currentIndex])
+					};
+				} catch (error) {
+					results[currentIndex] = {
+						status: 'rejected',
+						reason: error
+					};
+				}
+			}
+		};
+
+		const workerCount = Math.min(BREAKER_RUNTIME_FETCH_CONCURRENCY, devices.length);
+		await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+		return results;
 	};
 
 	const applyRuntimeStateToDevice = (device, breakerWork) => {
@@ -260,6 +287,9 @@
 		});
 		if (changed) {
 			syncTableData({ preserveChecked: true });
+			if (Object.keys(pendingStateMap.value).length === 0) {
+				clearStatusRefreshTimer();
+			}
 		}
 	};
 
@@ -291,7 +321,7 @@
 		try {
 			// 先拉设备清单，再逐个补实时状态；没有批量状态接口时这是最小兼容方案。
 			const breakers = await fetchBreakerList();
-			const results = await Promise.allSettled(breakers.map(fetchBreakerRuntime));
+			const results = await fetchBreakerRuntimes(breakers);
 			allBreakerDevices.value = results
 				.filter(result => result.status === 'fulfilled')
 				.map(result => result.value);
@@ -352,10 +382,14 @@
 	const connectWS = () => wsManager.connect();
 	const closeWS = () => wsManager.close();
 
+	const clearStatusRefreshTimer = () => {
+		if (!statusRefreshTimer) return;
+		clearTimeout(statusRefreshTimer);
+		statusRefreshTimer = null;
+	};
+
 	const scheduleStatusRefresh = () => {
-		if (statusRefreshTimer) {
-			clearTimeout(statusRefreshTimer);
-		}
+		clearStatusRefreshTimer();
 		// 控制接口返回后设备状态落库会有短暂延迟，延后再拉一次做最终对齐。
 		statusRefreshTimer = setTimeout(async () => {
 			statusRefreshTimer = null;
@@ -490,6 +524,7 @@
 	});
 
 	onHide(() => {
+		clearStatusRefreshTimer();
 		closeWS();
 	});
 </script>
@@ -590,6 +625,7 @@
 
 	.table-cell {
 		flex: 1;
+		min-width: 0;
 		text-align: center;
 
 		&.checkbox-cell {
@@ -598,6 +634,12 @@
 			justify-content: center;
 			align-items: center;
 		}
+	}
+
+	.location-cell {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.empty-box {

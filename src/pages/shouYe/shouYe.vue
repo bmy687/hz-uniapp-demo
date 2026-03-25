@@ -5,8 +5,37 @@
 			<text class="header-title">慧电智控管理平台</text>
 		</view>
 
-		<!-- 2. 设备卡片列表 -->
-		<view v-for="device in deviceList" :key="device.gateway" @click="handleDetail(device)" class="card">
+		<!-- 2. 筛选区 -->
+		<view class="filter-panel">
+			<scroll-view class="filter-type-scroll" scroll-x show-scrollbar="false">
+				<view class="filter-type-list">
+					<text
+						v-for="option in deviceTypeFilters"
+						:key="option.value"
+						class="filter-chip"
+						:class="{ 'filter-chip-active': selectedType === option.value }"
+						@click="setTypeFilter(option.value)"
+					>
+						{{ option.label }}
+					</text>
+				</view>
+			</scroll-view>
+
+			<view class="filter-search-box">
+				<text class="filter-search-icon">🔍</text>
+				<input
+					class="filter-search-input"
+					:value="keyword"
+					placeholder="搜索名称/位置/房间/网关"
+					confirm-type="search"
+					@input="handleKeywordInput"
+				/>
+				<text v-if="hasActiveFilter" class="filter-reset-text" @click="clearFilters">重置</text>
+			</view>
+		</view>
+
+		<!-- 3. 设备卡片列表 -->
+		<view v-for="device in filteredDeviceList" :key="device.gateway" @click="handleDetail(device)" class="card">
 			<view class="card-main">
 				<view class="left-content">
 					<!-- 左侧图标 -->
@@ -59,19 +88,27 @@
 		</view>
 
 		<!-- 无数据提示 -->
-		<view v-if="!loading && deviceList.length === 0" class="empty-tip">
-			<text>暂无设备数据</text>
+		<view v-if="!loading && filteredDeviceList.length === 0" class="empty-tip">
+			<text>{{ emptyTipText }}</text>
 		</view>
 	</view>
 </template>
 
 <script setup>
-	import { ref, onMounted } from 'vue';
+	import { computed, ref, onMounted } from 'vue';
 	import { getDeviceList } from '../../api/device.js';
 
 	const statusBarHeight = ref(20);
 	const deviceList = ref([]);
 	const loading = ref(false);
+	const keyword = ref('');
+	const selectedType = ref('all');
+	const deviceTypeFilters = [
+		{ label: '全部', value: 'all' },
+		{ label: '断路器', value: 'breaker' },
+		{ label: '传感器', value: 'env_sensor' },
+		{ label: '电表', value: 'meter' }
+	];
 
 	// 设备类型中文名
 	const deviceTypeName = (type) => {
@@ -93,6 +130,37 @@
 		return map[type] || 'home-filled'
 	}
 
+	const normalizeKeyword = (value) => String(value ?? '').trim().toLowerCase()
+
+	const matchesKeyword = (device, normalizedKeyword) => {
+		if (!normalizedKeyword) return true
+
+		const candidateFields = [
+			device.name,
+			device.location,
+			device.room,
+			device.gateway
+		]
+
+		return candidateFields.some(field => normalizeKeyword(field).includes(normalizedKeyword))
+	}
+
+	const filteredDeviceList = computed(() => {
+		const normalizedKeyword = normalizeKeyword(keyword.value)
+
+		return deviceList.value.filter(device => {
+			const matchesType = selectedType.value === 'all' || device.device_type === selectedType.value
+			return matchesType && matchesKeyword(device, normalizedKeyword)
+		})
+	})
+
+	const hasActiveFilter = computed(() => selectedType.value !== 'all' || normalizeKeyword(keyword.value) !== '')
+
+	const emptyTipText = computed(() => {
+		if (deviceList.value.length === 0) return '暂无设备数据'
+		return '暂无符合筛选条件的设备'
+	})
+
 	// 获取所有设备列表
 	const fetchDevices = async () => {
 		loading.value = true
@@ -107,6 +175,19 @@
 		} finally {
 			loading.value = false
 		}
+	}
+
+	const setTypeFilter = (type) => {
+		selectedType.value = type
+	}
+
+	const handleKeywordInput = (event) => {
+		keyword.value = event.detail.value
+	}
+
+	const clearFilters = () => {
+		selectedType.value = 'all'
+		keyword.value = ''
 	}
 
 	// 点击卡片跳转详情
@@ -144,6 +225,64 @@
 	.header-title {
 		font-size: 26rpx;
 		color: #334455;
+	}
+
+	.filter-panel {
+		margin: 20rpx;
+		padding: 20rpx;
+		background-color: #fff;
+		border-radius: 12rpx;
+		box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
+	}
+
+	.filter-type-scroll {
+		white-space: nowrap;
+		margin-bottom: 18rpx;
+	}
+
+	.filter-type-list {
+		display: inline-flex;
+		gap: 16rpx;
+	}
+
+	.filter-chip {
+		padding: 10rpx 22rpx;
+		border-radius: 999rpx;
+		background-color: #f2f5f7;
+		color: #607080;
+		font-size: 24rpx;
+	}
+
+	.filter-chip-active {
+		background-color: #09C6D0;
+		color: #fff;
+	}
+
+	.filter-search-box {
+		display: flex;
+		align-items: center;
+		padding: 0 18rpx;
+		height: 72rpx;
+		background-color: #f7f9fb;
+		border-radius: 12rpx;
+		border: 1px solid #e5eaee;
+	}
+
+	.filter-search-icon {
+		margin-right: 12rpx;
+		font-size: 24rpx;
+	}
+
+	.filter-search-input {
+		flex: 1;
+		font-size: 24rpx;
+		color: #334455;
+	}
+
+	.filter-reset-text {
+		margin-left: 12rpx;
+		font-size: 24rpx;
+		color: #09C6D0;
 	}
 
 	/* 2. 卡片样式 */
