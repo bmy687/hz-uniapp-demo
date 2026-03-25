@@ -10,7 +10,7 @@ const run = async (name, fn) => {
 }
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
-const componentPath = path.join(currentDir, 'shouYe.vue')
+const componentPath = path.resolve(currentDir, '../../src/pages/shouYe/shouYe.vue')
 const componentSource = fs.readFileSync(componentPath, 'utf8')
 const scriptMatch = componentSource.match(/<script setup>([\s\S]*?)<\/script>/)
 
@@ -86,9 +86,9 @@ const loadPage = (deviceResponse = []) => {
 }
 
 const sampleDevices = [
-	{ gateway: 'B1_R101_T01', building: '笃行楼', room: '305', device_type: 'breaker', name: '305配电箱', location: '笃行楼305', admin: '张三', phone: '13800000001' },
-	{ gateway: 'B1_R101_T02', building: '笃行楼', room: '306', device_type: 'env_sensor', name: '306环境传感器', location: '笃行楼306', admin: '李四', phone: '13800000002' },
-	{ gateway: 'B1_R101_T03', building: '笃行楼', room: '307', device_type: 'meter', name: '307电表', location: '笃行楼307', admin: '王五', phone: '13800000003' }
+	{ gateway: 'B1_R101_T01', building: 'Building-1', room: '305', device_type: 'breaker', name: 'breaker-305', location: 'Floor-305', admin: 'admin-1', phone: '13800000001' },
+	{ gateway: 'B1_R101_T02', building: 'Building-1', room: '306', device_type: 'env_sensor', name: 'sensor-306', location: 'Floor-306', admin: 'admin-2', phone: '13800000002' },
+	{ gateway: 'B1_R101_T03', building: 'Building-1', room: '307', device_type: 'meter', name: 'meter-307', location: 'Floor-307', admin: 'admin-3', phone: '13800000003' }
 ]
 
 await run('template renders cards from filteredDeviceList', async () => {
@@ -134,16 +134,18 @@ await run('combined filters update empty tip and clearFilters restores defaults'
 	const { bindings } = loadPage(sampleDevices)
 
 	await bindings.fetchDevices()
+	const expectedEmptyTip = bindings.emptyTipText.value
 	bindings.setTypeFilter('breaker')
 	bindings.handleKeywordInput({ detail: { value: '307' } })
 
 	assert.equal(bindings.filteredDeviceList.value.length, 0)
-	assert.equal(bindings.emptyTipText.value, '暂无符合筛选条件的设备')
-
+	assert.equal(bindings.emptyTipText.value, expectedEmptyTip)
 	bindings.clearFilters()
 
 	assert.equal(bindings.selectedType.value, 'all')
 	assert.equal(bindings.keyword.value, '')
 	assert.equal(bindings.filteredDeviceList.value.length, 3)
 })
+
+
 

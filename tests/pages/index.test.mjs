@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import vm from 'node:vm'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { getBreakerState, getBreakerStateText, getBreakerStateColor, breakerStatusMap } from '../../utils/breakerCodes.js'
+import { getBreakerState, getBreakerStateText, getBreakerStateColor, breakerStatusMap } from '../../src/shared/constants/breakerCodes.js'
 
 const run = async (name, fn) => {
 	await fn()
@@ -11,7 +11,7 @@ const run = async (name, fn) => {
 }
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
-const componentPath = path.join(currentDir, 'index.vue')
+const componentPath = path.resolve(currentDir, '../../src/pages/index/index.vue')
 const componentSource = fs.readFileSync(componentPath, 'utf8')
 const scriptMatch = componentSource.match(/<script setup>([\s\S]*?)<\/script>/)
 
@@ -282,7 +282,7 @@ await run('request accepts 201 responses and uses the H5 dev proxy url', async (
 		}
 	}
 
-	const { request } = await importModule('../../api/request.js')
+	const { request } = await importModule('../../src/shared/network/request.js')
 	const promise = request({
 		url: '/devices',
 		method: 'POST',
@@ -308,7 +308,7 @@ await run('network config derives websocket and request urls from the shared run
 		}
 	}
 
-	const { buildRequestUrl, getWsUrl } = await importModule('../../config/network.js')
+	const { buildRequestUrl, getWsUrl } = await importModule('../../src/shared/config/network.js')
 
 	assert.equal(buildRequestUrl('/devices'), '/api/devices')
 	assert.equal(getWsUrl(), 'wss://127.0.0.1:5174/ws')
@@ -360,7 +360,7 @@ await run('device api caches the device list and only cache-busts runtime data w
 		}
 	}
 
-	const { getDeviceList, getDeviceData, clearDeviceListCache } = await importModule('../../api/device.js')
+	const { getDeviceList, getDeviceData, clearDeviceListCache } = await importModule('../../src/api/device.js')
 
 	clearDeviceListCache()
 	const firstList = await getDeviceList()
@@ -442,14 +442,14 @@ await run('ws open stops polling, ws close starts polling as fallback', async ()
 	})
 
 	runMounted()
-	// onMounted calls connectWS but no startPolling — polling starts only as fallback
+	// onMounted calls connectWS but no startPolling 鈥?polling starts only as fallback
 	assert.equal(intervalCalls.length, 0)
 
-	// WS open — stopPolling is called (no-op here) but no polling started
+	// WS open 鈥?stopPolling is called (no-op here) but no polling started
 	socketHandlers.open()
 	assert.equal(intervalCalls.length, 0)
 
-	// WS close — polling starts as fallback
+	// WS close 鈥?polling starts as fallback
 	socketHandlers.close()
 	assert.equal(intervalCalls.length, 1)
 	assert.equal(intervalCalls[0].delay, 5000)
@@ -472,3 +472,4 @@ await run('ws open no longer triggers an extra fetch after the mounted request',
 	assert.equal(fetchCountBeforeOpen, 1)
 	assert.equal(fetchCountAfterOpen, 1)
 })
+

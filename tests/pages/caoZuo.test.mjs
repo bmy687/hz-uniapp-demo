@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
-import { getBreakerState, getBreakerStateText } from '../../utils/breakerCodes.js'
+import { getBreakerState, getBreakerStateText } from '../../src/shared/constants/breakerCodes.js'
 
 const run = async (name, fn) => {
 	await fn()
@@ -11,7 +11,7 @@ const run = async (name, fn) => {
 }
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
-const componentPath = path.join(currentDir, 'caoZuo.vue')
+const componentPath = path.resolve(currentDir, '../../src/pages/caoZuo/caoZuo.vue')
 const componentSource = fs.readFileSync(componentPath, 'utf8')
 const scriptMatch = componentSource.match(/<script setup>([\s\S]*?)<\/script>/)
 
@@ -407,7 +407,7 @@ await run('websocket breaker updates refresh the current selection list in real 
 })
 
 await run('ws snapshots arriving before load completes override stale http data', async () => {
-	// 模拟：HTTP /data 返回旧值 (G1=5合闸, G2=1分闸)，但 WS snapshot 在加载期间推送了最新值 (G2=5合闸)
+	// 妯℃嫙锛欻TTP /data 杩斿洖鏃у€?(G1=5鍚堥椄, G2=1鍒嗛椄)锛屼絾 WS snapshot 鍦ㄥ姞杞芥湡闂存帹閫佷簡鏈€鏂板€?(G2=5鍚堥椄)
 	const { bindings, socketHandlers } = loadPage({
 		'GET /api/devices': {
 			data: [
@@ -419,10 +419,10 @@ await run('ws snapshots arriving before load completes override stale http data'
 		'GET /api/B/101/G2/data?_t=0': { data: { breaker_work: 1 } }
 	})
 
-	// 先连 WS，让 snapshot 在 loadBreakerDevices 之前到达
+	// 鍏堣繛 WS锛岃 snapshot 鍦?loadBreakerDevices 涔嬪墠鍒拌揪
 	bindings.connectWS()
 
-	// WS snapshot 推送：G2 实际也是合闸(5)，但 HTTP 会返回旧值(1)
+	// WS snapshot 鎺ㄩ€侊細G2 瀹為檯涔熸槸鍚堥椄(5)锛屼絾 HTTP 浼氳繑鍥炴棫鍊?1)
 	socketHandlers.message({
 		data: JSON.stringify({
 			gateway: 'G2',
@@ -431,14 +431,16 @@ await run('ws snapshots arriving before load completes override stale http data'
 		})
 	})
 
-	// 此时 allBreakerDevices 还是空的，snapshot 应该被缓存
+	// snapshot should stay buffered until the initial device load finishes
 	assert.equal(bindings.tableData.value.length, 0)
 
-	// HTTP 加载完成
-	await bindings.loadBreakerDevices()
 
-	// 默认 tab=0 "分闸选择" 显示 closed(合闸) 设备，两台都应该在
+	// HTTP 鍔犺浇瀹屾垚
+	await bindings.loadBreakerDevices()
+	// default tab should display both closed devices after the snapshot override
 	assert.deepEqual(
+
+
 		Array.from(bindings.tableData.value.map(item => item.gateway)),
 		['G1', 'G2']
 	)
@@ -610,3 +612,5 @@ await run('onHide clears the pending delayed status refresh timer', async () => 
 
 	assert.equal(refreshTimer.cleared, true)
 })
+
+

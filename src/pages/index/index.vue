@@ -148,8 +148,8 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
-import { getBreakerState, getBreakerStateText, getBreakerStateColor, breakerStatusMap } from '../../utils/breakerCodes.js'
-import { createWsManager } from '../../utils/ws.js'
+import { getBreakerState, getBreakerStateText, getBreakerStateColor, breakerStatusMap } from '../../shared/constants/breakerCodes.js'
+import { createWsManager } from '../../shared/network/ws.js'
 import { getDeviceInfo, getDeviceData, sendDeviceControl } from '../../api/device.js'
 const POLL_INTERVAL = 5000
 

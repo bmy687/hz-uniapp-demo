@@ -7,7 +7,8 @@
     "dev:h5": "uni",
     "build:h5": "uni build",
     "dev:mp-weixin": "uni --platform mp-weixin",
-    "build:mp-weixin": "uni build --platform mp-weixin"
+    "build:mp-weixin": "uni build --platform mp-weixin",
+    "test": "node tests/run-tests.mjs"
   },
   "keywords": [],
   "author": "",
@@ -29,3 +30,5 @@
     "vue": "3.4.21"
   }
 }
+
+

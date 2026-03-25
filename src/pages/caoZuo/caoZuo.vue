@@ -101,8 +101,8 @@
 <script setup>
 	import { ref, computed } from 'vue';
 	import { onShow, onHide } from '@dcloudio/uni-app';
-	import { getBreakerState, getBreakerStateText } from '../../utils/breakerCodes.js';
-	import { createWsManager } from '../../utils/ws.js';
+	import { getBreakerState, getBreakerStateText } from '../../shared/constants/breakerCodes.js';
+	import { createWsManager } from '../../shared/network/ws.js';
 	import { getDeviceList, getDeviceData, sendDeviceControl } from '../../api/device.js';
 	const items = ref(['分闸选择', '合闸选择']);
 	const current = ref(0);

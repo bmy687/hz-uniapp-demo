@@ -1,4 +1,4 @@
-import { request } from './request.js'
+import { request } from '../shared/network/request.js'
 
 const DEVICE_LIST_CACHE_TTL = 30000
 
