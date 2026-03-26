@@ -2,10 +2,12 @@ import { buildRequestUrl } from '../config/network.js'
 
 const DEFAULT_TIMEOUT = 10000
 
+// 判断 HTTP 状态码是否为成功（2xx）
 export const isSuccessStatus = (statusCode) => {
 	return statusCode >= 200 && statusCode < 300
 }
 
+// 统一格式化请求错误对象，确保包含 error 字段
 const normalizeRequestError = (payload, fallbackError) => {
 	if (payload && typeof payload === 'object') {
 		return {
@@ -20,6 +22,10 @@ const normalizeRequestError = (payload, fallbackError) => {
 	}
 }
 
+/**
+ * 封装 uni.request，返回 Promise。
+ * promise 上挂载 abort() 方法，可主动取消请求。
+ */
 export const request = ({ url, method = 'GET', data, header, timeout = DEFAULT_TIMEOUT }) => {
 	let requestTask = null
 
@@ -41,6 +47,7 @@ export const request = ({ url, method = 'GET', data, header, timeout = DEFAULT_T
 		})
 	})
 
+	// 支持外部主动中止请求
 	promise.abort = () => {
 		try {
 			requestTask?.abort?.()

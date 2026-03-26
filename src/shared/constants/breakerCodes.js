@@ -1,7 +1,7 @@
 // 断路器 breaker_work 状态码分组
-export const closedCodes = new Set([4, 5, 6, 11, 14, 16])
-export const openedCodes = new Set([0, 1, 2, 10, 13, 15])
-export const abnormalCodes = new Set([7, 8, 9])
+export const closedCodes = new Set([4, 5, 6, 11, 14, 16])   // 分闸状态
+export const openedCodes = new Set([0, 1, 2, 10, 13, 15])   // 合闸状态
+export const abnormalCodes = new Set([7, 8, 9])              // 异常/故障状态
 
 // 状态码 → 中文描述
 export const breakerStatusMap = {
@@ -11,12 +11,14 @@ export const breakerStatusMap = {
 	12: '保留', 13: '干接点合闸', 14: '干接点分闸', 15: '手动模式合闸', 16: '手动模式分闸'
 }
 
+// 将原始状态码统一转为数字，无效值返回 null
 export const normalizeBreakerCode = (code) => {
 	if (code === undefined || code === null || code === '') return null
 	const normalized = Number(code)
 	return Number.isNaN(normalized) ? code : normalized
 }
 
+// 根据状态码返回语义状态：closed / opened / abnormal / unknown
 export const getBreakerState = (code) => {
 	const normalizedCode = normalizeBreakerCode(code)
 	if (normalizedCode === null) return 'unknown'
@@ -26,6 +28,7 @@ export const getBreakerState = (code) => {
 	return 'unknown'
 }
 
+// 语义状态 → 中文文本
 export const getBreakerStateText = (state) => {
 	if (state === 'closed') return '合闸'
 	if (state === 'opened') return '分闸'
@@ -33,6 +36,7 @@ export const getBreakerStateText = (state) => {
 	return '未知'
 }
 
+// 语义状态 → 显示颜色
 export const getBreakerStateColor = (state) => {
 	if (state === 'closed') return '#2B9939'
 	if (state === 'opened') return '#FF9800'
